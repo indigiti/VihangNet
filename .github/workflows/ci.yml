@@ -20,7 +20,12 @@ jobs:
       - name: PHP syntax
         run: find public -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: JavaScript syntax
-        run: node --check public/assets/app.js
+        run: |
+          node --check public/assets/app.js
+          node --check public/assets/engine3d.js
+          node --check public/assets/recorder.js
+          node --check tests/browser-e2e.mjs
+          python3 -m py_compile private/python/convert.py
       - name: HTTP smoke check
         shell: bash
         run: |
@@ -35,10 +40,44 @@ jobs:
           curl -fsS http://127.0.0.1:8877/ | grep -q 'Sound,'
           curl -fsS http://127.0.0.1:8877/assets/app.js | grep -q 'requestAnimationFrame'
           curl -fsS http://127.0.0.1:8877/api/health.php | grep -q '"ok":true'
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install browser test runtime
+        run: npm install --no-save --no-package-lock playwright@1.56.1
+      - name: Chromium interaction smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          php -S 127.0.0.1:8877 -t public >/tmp/vihangnet-e2e-server.log 2>&1 &
+          PID=$!
+          trap 'kill $PID 2>/dev/null || true' EXIT
+          for i in {1..40}; do
+            if curl -fsS http://127.0.0.1:8877/api/health.php >/dev/null; then break; fi
+            sleep 0.25
+          done
+          node tests/browser-e2e.mjs || { cat /tmp/vihangnet-e2e-server.log; exit 1; }
+      - name: Upload test screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-e2e-screenshots
+          path: |
+            desktop-e2e.png
+            mobile-e2e.png
+          if-no-files-found: ignore
   release:
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
-    needs: validate
+    needs: [validate, browser-e2e]
     steps:
       - uses: actions/checkout@v4
       - name: Build split DigiOps deployment
@@ -47,8 +86,9 @@ jobs:
           set -euo pipefail
           mkdir -p release/public release/private
           cp -a public/. release/public/
+          cp -a private/. release/private/
           cat > release/RELEASE.json <<EOF
-          {"app":"VihangNet","source_sha":"$GITHUB_SHA","layout":"public-private","public_root":"public_html/vihangnet","private_root":"private_html/vihangnet","python_analysis":false}
+          {"app":"VihangNet","source_sha":"$GITHUB_SHA","layout":"public-private","public_root":"public_html/vihangnet","private_root":"private_html/vihangnet","python_analysis":false,"cinematic_webgl2":true,"native_mp4_when_supported":true}
           EOF
           test -s release/public/index.php
           test -s release/public/assets/app.js
@@ -56,6 +96,10 @@ jobs:
           test -s release/public/api/health.php
           test -e release/public/.htaccess
           test ! -e release/public/python
+          test ! -e release/public/private
+          test -s release/private/python/convert.py
+          test -s release/public/assets/engine3d.js
+          test -s release/public/assets/recorder.js
           test -d release/private
       - name: Publish DigiOps artifact
         uses: actions/upload-artifact@v4

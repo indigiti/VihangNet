@@ -41,7 +41,7 @@ window.VihangRecorder={
    ctx.fillStyle='#9dadc0';ctx.font=Math.round(w*.012)+'px sans-serif';ctx.fillText('AUDIO-REACTIVE 3D • NO FILE UPLOAD',margin,h*.954);
    ctx.textAlign='right';ctx.fillText(new Date().toISOString().slice(0,10),w-margin,h*.954);ctx.textAlign='left';
   }
-  function reset(){clearTimeout(stopTimer);recording=false;button.textContent='● START RECORDING';button.classList.remove('is-recording');if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}}
+  function reset(){clearTimeout(stopTimer);recording=false;button.textContent='● START RECORDING';button.classList.remove('is-recording');if(stream){stream.getVideoTracks().forEach(t=>t.stop());stream=null}}
   async function start(){
    if(recording)return;
    if(!destination){setMessage('Start audio playback before recording');return}

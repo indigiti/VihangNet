@@ -58,7 +58,7 @@ try {
     console.log('Recording tracks:',tracks,'bytes:',videoBytes);
     assert.ok(tracks.includes('video'),'recording lacks video');
     assert.ok(tracks.includes('audio'),'recording lacks audio');
-  }catch(e){if(e.code==='ENOENT')console.log('ffprobe unavailable; container header still checked');else throw e;}
+  }catch(e){throw e;}
   await page.locator('#snapshot').click();
   await page.screenshot({path:'desktop-e2e.png',fullPage:true});
   assert.deepEqual(errors,[],'browser JS errors');

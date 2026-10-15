@@ -1,5 +1,7 @@
 import { chromium } from 'playwright';
 import assert from 'node:assert/strict';
+import { statSync, readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 
 const base = process.env.VIHANGNET_TEST_URL || 'http://127.0.0.1:8877/';
 const browser = await chromium.launch({
@@ -19,6 +21,9 @@ try {
   assert.equal(await page.locator('#camera option').count(),3);
   const webgl=await page.evaluate(()=>!!document.createElement('canvas').getContext('webgl2'));
   console.log('Browser WebGL2 available:',webgl);
+  const activeRenderers=await page.locator('#canvases canvas').evaluateAll(nodes=>nodes.map(c=>c.getContext('webgl2')?'WebGL2':c.getContext('2d')?'Canvas2D':'None'));
+  console.log('Active visualization renderers:',activeRenderers);
+  if(webgl)assert.deepEqual(activeRenderers,['WebGL2','WebGL2','WebGL2'],'GPU renderer should initialize all three canvases');
   await page.getByRole('button',{name:/TRY DEMO SOUND/}).click();
   await page.waitForTimeout(1900);
   const status=await page.locator('#status').innerText();
@@ -44,6 +49,16 @@ try {
   console.log('Recorded video:',file);
   const filePath=await download.path();
   assert.ok(filePath,'download was not saved');
+  const videoBytes=statSync(filePath).size;
+  assert.ok(videoBytes>2000,'recording is unexpectedly empty');
+  if(file.endsWith('.mp4'))assert.equal(readFileSync(filePath).toString('ascii',4,8),'ftyp','MP4 must be a real MP4 container');
+  try {
+    const probe=JSON.parse(execFileSync('ffprobe',['-v','error','-show_streams','-of','json',filePath],{encoding:'utf8'}));
+    const tracks=(probe.streams||[]).map(x=>x.codec_type);
+    console.log('Recording tracks:',tracks,'bytes:',videoBytes);
+    assert.ok(tracks.includes('video'),'recording lacks video');
+    assert.ok(tracks.includes('audio'),'recording lacks audio');
+  }catch(e){if(e.code==='ENOENT')console.log('ffprobe unavailable; container header still checked');else throw e;}
   await page.locator('#snapshot').click();
   await page.screenshot({path:'desktop-e2e.png',fullPage:true});
   assert.deepEqual(errors,[],'browser JS errors');
